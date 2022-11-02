@@ -34,7 +34,10 @@ spec:
     - name: ace-project-name
       value: "simple-demo"
 
-
+    # name of the App Connect test project to run
+    #  This should be the name of a folder in ace-projects
+    - name: test-project-name
+      value: "simple-demo_Test"
 
   pipelineRef:
     name: pipeline-ace-integration-server

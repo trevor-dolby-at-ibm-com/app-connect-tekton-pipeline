@@ -1,0 +1,90 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: ace-run-unit-tests
+spec:
+
+  params:
+    - name: test-project-name
+      description: |+
+        Name of the App Connect test project to build and run.
+        Relies on integration.bar having been created in previous tasks.
+
+  workspaces:
+    - name: output
+      description: workspace with the ACE resources in
+
+  steps:
+    - name: make-test-project-writable
+      image: image-registry.openshift-image-registry.svc:5000/openshift/tools
+      script: |
+        #!/bin/bash
+
+        set -e
+
+        if [ -z "$(params.test-project-name)" ]
+        then
+          echo "No Test project found?"
+        else
+          echo "making Test project writable to allow compiling"
+          chmod -R a+wrx "/workspace/output/ace-projects/$(params.test-project-name)"
+        fi
+
+
+    - name: build-and-run-ut
+      # see https://www.ibm.com/docs/en/app-connect/12.0?topic=cacerid-building-sample-app-connect-enterprise-image-using-docker
+      #  for alternate images and versions that can be used for this
+      image: cp.icr.io/cp/appc/ace:12.0.6.0-r1@sha256:003ca6615312b0987fca1c09d676a77fc2c77ecc8607dfaa49f2e8e1976a6a15
+      securityContext:
+        # run as the aceuser user id
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: false
+      env:
+        - name: LICENSE
+          value: accept
+      script: |
+        #!/bin/bash
+
+        set -e
+
+        echo "Building and running App Connect tests"
+
+        echo "setting up environment"
+        source /opt/ibm/ace-12/server/bin/mqsiprofile
+
+        echo "confirming bar file location"
+        BAR_FILE="/workspace/output/bars/integration.bar"
+        echo $BAR_FILE
+        ls -l $BAR_FILE
+
+        echo "confirming workspace location"
+        ACE_PROJECTS_WORKSPACE="/workspace/output/ace-projects"
+        ls -l $ACE_PROJECTS_WORKSPACE
+
+        echo "Creating ACE work directory and deploying BAR file"
+        rm -rf /tmp/ut-work-dir || /bin/true
+        mqsicreateworkdir /tmp/ut-work-dir
+        ibmint deploy \
+          --input-bar-file $BAR_FILE \
+          --output-work-directory /tmp/ut-work-dir
+
+        echo "Building ACE test project into the work directory"
+        ibmint deploy \
+          --input-path $ACE_PROJECTS_WORKSPACE \
+          --output-work-directory /tmp/ut-work-dir \
+          --project $(params.test-project-name)
+        
+        echo "Optimizing ACE work directory to speed up tests"
+        ibmint optimize server --work-directory /tmp/ut-work-dir
+
+        echo "Listing run directory"
+        ls -l /tmp/ut-work-dir/run
+
+        echo "Running the tests in an ACE server"
+        # Run the server to run the tests
+        IntegrationServer \
+          -w /tmp/ut-work-dir \
+          --start-msgflows false \
+          --admin-rest-api -1 \
+          --test-project $(params.test-project-name)

@@ -85,6 +85,16 @@ spec:
         Leave as an empty string if there is no Java project needed in the
         application.
 
+    # Test project
+    - name: test-project-name
+      default: ""
+      description: |+
+        Name of Test project containing tests for the application.
+        This should be the name of a folder in ace-projects in the
+        git-repository being cloned.
+        Leave as an empty string if there is no test project for the
+        application.
+
     # setdbparms.txt file
     - name: setdbparms-file
       default: ""
@@ -221,6 +231,27 @@ spec:
         # need the git repository to be able to
         #  compile the project into a bar file
         - clone-source
+      workspaces:
+        - name: output
+          workspace: pipeline-shared-workspace
+
+
+    # --------------------------------------------------------
+
+    - name: unit-tests
+      taskRef:
+        name: ace-run-unit-tests
+      params:
+        - name: test-project-name
+          value: "$(params.test-project-name)"
+      when:
+        - input: "$(params.test-project-name)"
+          operator: notin
+          values:
+            - ""
+      runAfter:
+        # need the BAR file to test
+        - bar-file
       workspaces:
         - name: output
           workspace: pipeline-shared-workspace
